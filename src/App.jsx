@@ -25,7 +25,7 @@ import {
 	XAxis,
 	YAxis,
 } from 'recharts'
-import { activityData, categories, receipts } from './data/receipts'
+import { activityData, categories, insights, receipts } from './data/receipts'
 
 const iconMap = {
 	Music: Music2,
@@ -44,11 +44,19 @@ const accents = {
 	Messages: 'blue', Searches: 'lavender', Events: 'gold', Notes: 'mint',
 }
 
-const threadIds = [1, 2, 3, 4, 5]
+const formatMinutes = (minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+const activeDays = new Set(receipts.map((receipt) => receipt.date)).size
+const sourceClusters = receipts.reduce((clusters, receipt) => {
+	const key = `${receipt.source}:${receipt.date}`
+	clusters[key] = [...(clusters[key] || []), receipt]
+	return clusters
+}, {})
+const strongestCluster = Object.values(sourceClusters).sort((a, b) => b.length - a.length)[0] || receipts.slice(0, 5)
+const clusterBy = (predicate) => receipts.filter(predicate).slice(0, 3).map((receipt) => receipt.id)
 const chapters = [
-	{ number: '01', title: 'Late night energy', description: 'Your nights seem to have stories of their own.', ids: [1, 3, 4] },
-	{ number: '02', title: 'Weekend escapes', description: 'Places, photos and moments that clustered around your weekends.', ids: [10, 11, 23] },
-	{ number: '03', title: 'Things you kept coming back to', description: 'Recurring places, songs and interests across your receipts.', ids: [15, 20, 30] },
+	{ number: '01', title: `${insights.mostListenedArtist.value} on repeat`, description: `${insights.mostListenedArtist.count.toLocaleString()} listening records make this the archive's most persistent artist.`, ids: clusterBy((receipt) => receipt.artist === insights.mostListenedArtist.value) },
+	{ number: '02', title: `${insights.commonSpendingCategory.value} kept recurring`, description: `${insights.commonSpendingCategory.count.toLocaleString()} transactions share this spending category across the purchase datasets.`, ids: clusterBy((receipt) => receipt.spendingCategory === insights.commonSpendingCategory.value) },
+	{ number: '03', title: 'Patterns in the archive', description: 'Repeated activity appears inside each source timeline, without forcing unrelated dates together.', ids: strongestCluster.slice(0, 3).map((receipt) => receipt.id) },
 ]
 
 const formatDate = (date) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00`))
@@ -82,12 +90,7 @@ function Navbar({ onMenu }) {
 }
 
 function Hero() {
-	const floating = [
-		{ category: 'Music', title: 'Die With A Smile', meta: '23:42 / Park Street', className: 'float-card-one' },
-		{ category: 'Photos', title: 'IMG_2847', meta: '00:06 / Park Street', className: 'float-card-two' },
-		{ category: 'Purchases', title: 'Late Night Coffee', meta: '00:43 / Blue Tokai', className: 'float-card-three' },
-		{ category: 'Messages', title: 'Good night ✦', meta: '00:51 / Messages', className: 'float-card-four' },
-	]
+	const floating = receipts.slice(0, 4).map((receipt, index) => ({ ...receipt, meta: `${receipt.time} / ${receipt.location || receipt.source}`, className: `float-card-${['one', 'two', 'three', 'four'][index]}` }))
 	return <section className="hero" id="top">
 		<div className="hero-orbit orbit-a" /><div className="hero-orbit orbit-b" />
 		{floating.map((item, index) => <motion.div key={item.title} className={`floating-receipt ${item.className}`}
@@ -118,7 +121,8 @@ function ActivityChart() {
 }
 
 function Overview() {
-	return <section className="section overview-section" id="overview"><SectionIntro eyebrow="01 / the archive" title="The big picture" description="Before the story, there are the moments." /><div className="stats-grid">{[['36', 'Total receipts'], ['24', 'Active days'], ['09', 'Categories'], ['12', 'Connections']].map(([value, label], index) => <Reveal key={label} delay={index * 0.06}><div className="stat"><strong>{value}</strong><span>{label}</span><small>{index === 0 ? '+8 this week' : index === 3 ? 'waiting to be found' : 'since May 18, 2026'}</small></div></Reveal>)}</div><ActivityChart /></section>
+	const stats = [[receipts.length.toLocaleString(), 'Processed receipts', 'from three local datasets'], [activeDays.toLocaleString(), 'Active days', 'across separate source timelines'], [String(categories.length - 1).padStart(2, '0'), 'Archive categories', 'music and purchases'], [insights.mostListenedArtist.count.toLocaleString(), 'Top artist plays', insights.mostListenedArtist.value]]
+	return <section className="section overview-section" id="overview"><SectionIntro eyebrow="01 / the archive" title="The big picture" description="Before the story, there are the moments." /><div className="stats-grid">{stats.map(([value, label, note], index) => <Reveal key={label} delay={index * 0.06}><div className="stat"><strong>{value}</strong><span>{label}</span><small>{note}</small></div></Reveal>)}</div><div className="data-story"><span className="eyebrow">Data story / what repeats</span><p><strong>{insights.mostPlayedTrack.value}</strong> is the most played track, with <strong>{formatMinutes(insights.totalListeningMinutes)}</strong> of listening time in the music archive. On the spending side, <strong>{insights.commonSpendingCategory.value}</strong> is the most common category.</p><span className="story-note">Sources remain separate; these are patterns, not invented connections.</span></div><ActivityChart /></section>
 }
 
 function ReceiptCard({ receipt, onClick, compact = false }) {
@@ -136,14 +140,23 @@ function ReceiptExplorer({ selectedCategory, onCategoryChange, onSelect }) {
 	return <section className="section explorer-section" id="receipts"><SectionIntro eyebrow="02 / the details" title="Every moment leaves a receipt." description="Look closer. The ordinary is where the archive gets interesting." /><div className="explorer-tools"><CategoryFilter selected={selectedCategory} onSelect={onCategoryChange} /><label className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your memories..." /><span>{filtered.length}</span></label></div><div className="receipt-grid">{filtered.map((receipt, index) => <Reveal key={receipt.id} delay={(index % 4) * 0.04}><ReceiptCard receipt={receipt} onClick={onSelect} /></Reveal>)}</div>{filtered.length === 0 && <div className="empty-state"><Sparkles size={20} /> No memories found.</div>}</section>
 }
 
+// oxlint-disable-next-line no-unused-vars
 function MemoryThreads({ onSelect }) {
 	const [thread, setThread] = useState([])
-	const discover = () => setThread(threadIds.map((id) => receipts.find((receipt) => receipt.id === id)))
+	const discover = () => setThread(strongestCluster.slice(0, 5))
 	return <section className="threads-section" id="threads"><div className="thread-glow" /><div className="thread-heading"><div><p className="eyebrow">03 / the connection</p><h2>Some moments<br /><em>belong together.</em></h2></div><div className="thread-copy"><p>Memento connects receipts that happened close together, revealing memories hidden inside your digital trail.</p><button className="button button-light" onClick={discover}>Discover a memory <Sparkles size={16} /></button></div></div><AnimatePresence mode="wait">{thread.length === 0 ? <motion.div key="empty" className="thread-placeholder" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="placeholder-line"><span /><span /><span /><span /><span /></div><span>Five receipts are waiting to become a story</span></motion.div> : <motion.div key="thread" className="thread-reveal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}><div className="thread-result-head"><div><span className="eyebrow">A discovered memory / June 14—15</span><h3>One moment.<br /><em>Five receipts.</em></h3></div><p>These receipts happened within the same evening, revealing a connected memory.</p></div><div className="thread-list">{thread.map((receipt, index) => <motion.div className="thread-step" key={receipt.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.12 }}><button onClick={() => onSelect(receipt)} className="thread-card"><span className={`thread-number ${accents[receipt.category]}`}>0{index + 1}</span><div className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} /></div><div><span className="eyebrow">{receipt.category}</span><strong>{receipt.title}</strong></div><time>{receipt.time}</time><ChevronRight size={16} /></button>{index < thread.length - 1 && <div className="thread-connector"><span /></div>}</motion.div>)}</div><div className="thread-foot"><span><span className="status-dot" /> connected by time, place & feeling</span><button onClick={() => setThread([])}>Clear thread <X size={14} /></button></div></motion.div>}</AnimatePresence></section>
 }
 
 function LifeChapters({ onSelect }) {
 	return <section className="section chapters-section" id="chapters"><SectionIntro eyebrow="04 / the pattern" title="Your life has chapters." description="Some patterns are too meaningful to be just statistics." /><div className="chapters-grid">{chapters.map((chapter, index) => <Reveal key={chapter.number} delay={index * 0.08}><article className={`chapter chapter-${index + 1}`}><div className="chapter-head"><span>{chapter.number}</span><ArrowUpRight size={17} /></div><h3>{chapter.title}</h3><p>{chapter.description}</p><div className="chapter-receipts">{chapter.ids.map((id) => { const receipt = receipts.find((item) => item.id === id); return <button key={id} onClick={() => onSelect(receipt)} className="mini-receipt"><span className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} size={15} /></span><span>{receipt.title}</span><ArrowUpRight size={13} /></button> })}</div></article></Reveal>)}</div></section>
+}
+
+function DataMemoryThreads({ onSelect }) {
+	const [thread, setThread] = useState([])
+	const discover = () => setThread(strongestCluster.slice(0, 5))
+	const threadDate = strongestCluster[0]?.date || ''
+	const threadSource = strongestCluster[0]?.source || 'one source'
+	return <section className="threads-section" id="threads"><div className="thread-glow" /><div className="thread-heading"><div><p className="eyebrow">03 / the connection</p><h2>Some moments<br /><em>belong together.</em></h2></div><div className="thread-copy"><p>Memento finds repeated activity within one dataset and date, revealing patterns without linking unrelated timelines.</p><button className="button button-light" onClick={discover}>Discover a memory <Sparkles size={16} /></button></div></div><AnimatePresence mode="wait">{thread.length === 0 ? <motion.div key="empty" className="thread-placeholder" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="placeholder-line"><span /><span /><span /><span /><span /></div><span>A real source cluster is waiting to become a story</span></motion.div> : <motion.div key="thread" className="thread-reveal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}><div className="thread-result-head"><div><span className="eyebrow">A discovered pattern / {threadDate} / {threadSource}</span><h3>One source.<br /><em>{thread.length} receipts.</em></h3></div><p>These records share a date inside the same source dataset. Nothing here depends on unrelated dates being connected.</p></div><div className="thread-list">{thread.map((receipt, index) => <motion.div className="thread-step" key={receipt.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.12 }}><button onClick={() => onSelect(receipt)} className="thread-card"><span className={`thread-number ${accents[receipt.category]}`}>0{index + 1}</span><div className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} /></div><div><span className="eyebrow">{receipt.category}</span><strong>{receipt.title}</strong></div><time>{receipt.time}</time><ChevronRight size={16} /></button>{index < thread.length - 1 && <div className="thread-connector"><span /></div>}</motion.div>)}</div><div className="thread-foot"><span><span className="status-dot" /> connected within one source and date</span><span>{threadDate} / {thread.length} receipts</span></div></motion.div>}</AnimatePresence></section>
 }
 
 function Footer() {
@@ -154,7 +167,7 @@ function App() {
 	const [selectedCategory, setSelectedCategory] = useState('All')
 	const [selectedReceipt, setSelectedReceipt] = useState(null)
 	const [mobileNav, setMobileNav] = useState(false)
-	return <div className="app-shell"><Navbar onMenu={() => setMobileNav(!mobileNav)} />{mobileNav && <div className="mobile-nav"><button onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button><a href="#overview" onClick={() => setMobileNav(false)}>Overview</a><a href="#receipts" onClick={() => setMobileNav(false)}>Receipts</a><a href="#threads" onClick={() => setMobileNav(false)}>Threads</a><a href="#chapters" onClick={() => setMobileNav(false)}>Chapters</a></div>}<main><Hero /><Overview /><ReceiptExplorer selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} onSelect={setSelectedReceipt} /><MemoryThreads onSelect={setSelectedReceipt} /><LifeChapters onSelect={setSelectedReceipt} /><Footer /></main><ReceiptModal receipt={selectedReceipt} onClose={() => setSelectedReceipt(null)} /></div>
+	return <div className="app-shell"><Navbar onMenu={() => setMobileNav(!mobileNav)} />{mobileNav && <div className="mobile-nav"><button onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button><a href="#overview" onClick={() => setMobileNav(false)}>Overview</a><a href="#receipts" onClick={() => setMobileNav(false)}>Receipts</a><a href="#threads" onClick={() => setMobileNav(false)}>Threads</a><a href="#chapters" onClick={() => setMobileNav(false)}>Chapters</a></div>}<main><Hero /><Overview /><ReceiptExplorer selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} onSelect={setSelectedReceipt} /><DataMemoryThreads onSelect={setSelectedReceipt} /><LifeChapters onSelect={setSelectedReceipt} /><Footer /></main><ReceiptModal receipt={selectedReceipt} onClose={() => setSelectedReceipt(null)} /></div>
 }
 
 export default App
