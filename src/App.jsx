@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
 	ArrowDownRight,
@@ -113,7 +113,7 @@ function SectionIntro({ eyebrow, title, description, id }) {
 }
 
 function CategoryFilter({ selected, onSelect }) {
-	return <div className="filter-row" role="tablist">{categories.map((category) => <button key={category} className={selected === category ? 'filter active' : 'filter'} onClick={() => onSelect(category)}>{category}</button>)}</div>
+	return <div className="filter-row" role="tablist">{categories.map((category) => <button key={category} role="tab" aria-selected={selected === category} className={selected === category ? 'filter active' : 'filter'} onClick={() => onSelect(category)}>{category}</button>)}</div>
 }
 
 function ActivityChart() {
@@ -130,6 +130,27 @@ function ReceiptCard({ receipt, onClick, compact = false }) {
 }
 
 function ReceiptModal({ receipt, onClose }) {
+	const previousFocusRef = useRef(null)
+
+	useEffect(() => {
+		if (!receipt) return undefined
+
+		previousFocusRef.current = document.activeElement
+		const handleKeyDown = (event) => {
+			if (event.key === 'Escape') {
+				onClose()
+			}
+		}
+
+		document.addEventListener('keydown', handleKeyDown)
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown)
+			requestAnimationFrame(() => {
+				previousFocusRef.current?.focus?.()
+			})
+		}
+	}, [receipt, onClose])
+
 	if (!receipt) return null
 	return <AnimatePresence><motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div className="receipt-modal" initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20 }} onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label="Close receipt"><X size={18} /></button><div className={`modal-icon receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} size={24} /></div><span className="eyebrow">{receipt.category} / receipt {String(receipt.id).padStart(2, '0')}</span><h2>{receipt.title}</h2><p className="modal-description">{receipt.detail}</p><div className="modal-details"><span><strong>Date</strong>{formatDate(receipt.date)}</span><span><strong>Time</strong>{receipt.time}</span><span><strong>Where</strong>{receipt.location || 'Everywhere'}</span></div><div className="tag-list">{receipt.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div></motion.div></motion.div></AnimatePresence>
 }
@@ -141,14 +162,8 @@ function ReceiptExplorer({ selectedCategory, onCategoryChange, onSelect }) {
 }
 
 // oxlint-disable-next-line no-unused-vars
-function MemoryThreads({ onSelect }) {
-	const [thread, setThread] = useState([])
-	const discover = () => setThread(strongestCluster.slice(0, 5))
-	return <section className="threads-section" id="threads"><div className="thread-glow" /><div className="thread-heading"><div><p className="eyebrow">03 / the connection</p><h2>Some moments<br /><em>belong together.</em></h2></div><div className="thread-copy"><p>Memento connects receipts that happened close together, revealing memories hidden inside your digital trail.</p><button className="button button-light" onClick={discover}>Discover a memory <Sparkles size={16} /></button></div></div><AnimatePresence mode="wait">{thread.length === 0 ? <motion.div key="empty" className="thread-placeholder" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="placeholder-line"><span /><span /><span /><span /><span /></div><span>Five receipts are waiting to become a story</span></motion.div> : <motion.div key="thread" className="thread-reveal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}><div className="thread-result-head"><div><span className="eyebrow">A discovered memory / June 14—15</span><h3>One moment.<br /><em>Five receipts.</em></h3></div><p>These receipts happened within the same evening, revealing a connected memory.</p></div><div className="thread-list">{thread.map((receipt, index) => <motion.div className="thread-step" key={receipt.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.12 }}><button onClick={() => onSelect(receipt)} className="thread-card"><span className={`thread-number ${accents[receipt.category]}`}>0{index + 1}</span><div className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} /></div><div><span className="eyebrow">{receipt.category}</span><strong>{receipt.title}</strong></div><time>{receipt.time}</time><ChevronRight size={16} /></button>{index < thread.length - 1 && <div className="thread-connector"><span /></div>}</motion.div>)}</div><div className="thread-foot"><span><span className="status-dot" /> connected by time, place & feeling</span><button onClick={() => setThread([])}>Clear thread <X size={14} /></button></div></motion.div>}</AnimatePresence></section>
-}
-
 function LifeChapters({ onSelect }) {
-	return <section className="section chapters-section" id="chapters"><SectionIntro eyebrow="04 / the pattern" title="Your life has chapters." description="Some patterns are too meaningful to be just statistics." /><div className="chapters-grid">{chapters.map((chapter, index) => <Reveal key={chapter.number} delay={index * 0.08}><article className={`chapter chapter-${index + 1}`}><div className="chapter-head"><span>{chapter.number}</span><ArrowUpRight size={17} /></div><h3>{chapter.title}</h3><p>{chapter.description}</p><div className="chapter-receipts">{chapter.ids.map((id) => { const receipt = receipts.find((item) => item.id === id); return <button key={id} onClick={() => onSelect(receipt)} className="mini-receipt"><span className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} size={15} /></span><span>{receipt.title}</span><ArrowUpRight size={13} /></button> })}</div></article></Reveal>)}</div></section>
+	return <section className="section chapters-section" id="chapters"><SectionIntro eyebrow="04 / the pattern" title="Your life has chapters." description="Some patterns are too meaningful to be just statistics." /><div className="chapters-grid">{chapters.map((chapter, index) => <Reveal key={chapter.number} delay={index * 0.08}><article className={`chapter chapter-${index + 1}`}><div className="chapter-head"><span>{chapter.number}</span><ArrowUpRight size={17} /></div><h3>{chapter.title}</h3><p>{chapter.description}</p><div className="chapter-receipts">{chapter.ids.map((id) => { const receipt = receipts.find((item) => item.id === id); if (!receipt) return null; return <button key={id} onClick={() => onSelect(receipt)} className="mini-receipt"><span className={`receipt-icon ${accents[receipt.category]}`}><ReceiptIcon category={receipt.category} size={15} /></span><span>{receipt.title}</span><ArrowUpRight size={13} /></button> })}</div></article></Reveal>)}</div></section>
 }
 
 function DataMemoryThreads({ onSelect }) {
